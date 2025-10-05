@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <title>Прогресс пар</title>
+  <title>Ждем конца...</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0f172a"/>
   <style>
@@ -27,8 +27,8 @@
 </head>
 <body>
   <div class="wrap">
-    <h1>Прогресс пар на сегодня</h1>
-    <div class="sub">Обновляется в реальном времени. Работает оффлайн после первого открытия.</div>
+    <h1>Сколько там до конца?</h1>
+    <div class="sub">Еще чуть-чуть, честно!</div>
 
     <div id="list"></div>
 
@@ -41,7 +41,7 @@
   </div>
 
   <script>
-    // === НАСТРОЙ СВОЁ РАСПИСАНИЕ ТУТ (по умолчанию — твоё из сообщения) ===
+    // === НАСТРОЙ СВОЁ РАСПИСАНИЕ ТУТ ===
     const DEFAULT_SCHEDULE = [
       { title: "Пара 1", start: "09:00", end: "10:30" },
       { title: "Пара 2", start: "10:40", end: "12:10" },
@@ -107,6 +107,7 @@
         const end   = toTodayMs(slot.end);
         const dur   = Math.max(end - start, 1);
         const el    = clamp(now - start, 0, dur);
+        const rem   = clamp(dur - el, 0, dur);
         const pct   = clamp((el / dur) * 100, 0, 100);
 
         const fill  = document.getElementById(`fill-${i}`);
@@ -116,9 +117,14 @@
         fill.style.width = pct.toFixed(6) + "%";
         pctEl.textContent = pct.toFixed(2) + "%";
 
-        if (now < start) stEl.textContent = `До начала: ${fmt(start - now)}`;
-        else if (now > end) stEl.textContent = `Завершено (${fmt(dur)} всего)`;
-        else stEl.textContent = `Идёт: прошло ${fmt(el)} из ${fmt(dur)}`;
+        if (now < start) {
+          stEl.textContent = `До начала: ${fmt(start - now)} (длительность ${fmt(dur)})`;
+        } else if (now > end) {
+          stEl.textContent = `Завершено (${fmt(dur)} всего)`;
+        } else {
+          // ✅ главный апдейт: показываем прошло и осталось
+          stEl.textContent = `Идёт: прошло ${fmt(el)} • осталось ${fmt(rem)} (из ${fmt(dur)})`;
+        }
       });
 
       nowEl.textContent = `Сейчас: ${new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}`;
@@ -151,7 +157,7 @@
     setInterval(tick, 200);
     render();
 
-    // PWA: регистрация Service Worker для оффлайна
+    // PWA: регистрация Service Worker для оффлайна (если используешь sw.js)
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(()=>{}));
     }
