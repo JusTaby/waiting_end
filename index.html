@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Прогресс пар</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a"/>
+  <style>
+    :root { --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#9ca3af; --accent:#22d3ee; --rail:#1f2937; }
+    * { box-sizing: border-box }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Inter; background:var(--bg); color:var(--text); }
+    .wrap { max-width: 640px; margin: 20px auto; padding: 0 14px; }
+    h1 { font-size: 1.15rem; margin: 0 0 8px; font-weight: 700; }
+    .sub { color: var(--muted); font-size: .95rem; margin-bottom: 8px; }
+    .card { background:var(--card); border-radius: 16px; padding: 14px; margin: 10px 0; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+    .row { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+    .title { font-weight: 600; font-size: 1rem; }
+    .time { color:var(--muted); font-variant-numeric: tabular-nums; }
+    .bar { position:relative; height:12px; background:var(--rail); border-radius:999px; overflow:hidden; margin-top:10px; }
+    .fill { position:absolute; inset:0; width:0%; background:linear-gradient(90deg,var(--accent),#60a5fa); }
+    .status { color:var(--muted); margin-top:8px; font-size:.92rem; }
+    .percent { font-variant-numeric: tabular-nums; font-weight: 600; }
+    footer { margin: 10px 0 4px; color:var(--muted); font-size:.9rem; text-align:center; }
+    button.min { background:#0b1220; color:#cbd5e1; border:1px solid #1f2937; padding:8px 12px; border-radius:12px; font-size:.95rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Прогресс пар на сегодня</h1>
+    <div class="sub">Обновляется в реальном времени. Работает оффлайн после первого открытия.</div>
+
+    <div id="list"></div>
+
+    <div style="display:flex; gap:8px; justify-content:center; margin-top:10px">
+      <button class="min" id="edit">Редактировать расписание</button>
+      <button class="min" id="reset">Сбросить на мои пары</button>
+    </div>
+
+    <footer id="now"></footer>
+  </div>
+
+  <script>
+    // === НАСТРОЙ СВОЁ РАСПИСАНИЕ ТУТ (по умолчанию — твоё из сообщения) ===
+    const DEFAULT_SCHEDULE = [
+      { title: "Пара 1", start: "09:00", end: "10:30" },
+      { title: "Пара 2", start: "10:40", end: "12:10" },
+      { title: "Пара 3", start: "12:20", end: "13:50" },
+      { title: "Пара 4", start: "14:30", end: "16:00" },
+    ];
+
+    // Храним настройки локально
+    const SKEY = "schedule.v1";
+    function loadSchedule(){
+      try { return JSON.parse(localStorage.getItem(SKEY)) || DEFAULT_SCHEDULE; }
+      catch { return DEFAULT_SCHEDULE; }
+    }
+    function saveSchedule(s){ localStorage.setItem(SKEY, JSON.stringify(s)); }
+
+    let SCHEDULE = loadSchedule();
+
+    const list = document.getElementById("list");
+    const nowEl = document.getElementById("now");
+
+    function makeCard(slot, i) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="row">
+          <div class="title">${slot.title || ("Пара " + (i+1))}</div>
+          <div class="time">${slot.start}–${slot.end}</div>
+        </div>
+        <div class="bar"><div class="fill" id="fill-${i}"></div></div>
+        <div class="row" style="margin-top:8px">
+          <div class="status" id="status-${i}"></div>
+          <div class="percent" id="pct-${i}">0.00%</div>
+        </div>
+      `;
+      return card;
+    }
+
+    function render() {
+      list.innerHTML = "";
+      SCHEDULE.forEach((slot, i) => list.appendChild(makeCard(slot, i)));
+      tick();
+    }
+
+    function toTodayMs(hhmm) {
+      const [h, m] = hhmm.split(":").map(Number);
+      const d = new Date();
+      d.setHours(h, m, 0, 0);
+      return d.getTime();
+    }
+    const clamp = (x,a,b)=>Math.max(a,Math.min(b,x));
+    function fmt(ms) {
+      const s = Math.floor(ms/1000);
+      const mm = Math.floor(s/60), ss = s%60, hh = Math.floor(mm/60);
+      const pad = n => String(n).padStart(2,"0");
+      return hh>0 ? `${hh}:${pad(mm%60)}:${pad(ss)}` : `${mm}:${pad(ss)}`;
+    }
+
+    function tick() {
+      const now = Date.now();
+      SCHEDULE.forEach((slot, i) => {
+        const start = toTodayMs(slot.start);
+        const end   = toTodayMs(slot.end);
+        const dur   = Math.max(end - start, 1);
+        const el    = clamp(now - start, 0, dur);
+        const pct   = clamp((el / dur) * 100, 0, 100);
+
+        const fill  = document.getElementById(`fill-${i}`);
+        const pctEl = document.getElementById(`pct-${i}`);
+        const stEl  = document.getElementById(`status-${i}`);
+
+        fill.style.width = pct.toFixed(6) + "%";
+        pctEl.textContent = pct.toFixed(2) + "%";
+
+        if (now < start) stEl.textContent = `До начала: ${fmt(start - now)}`;
+        else if (now > end) stEl.textContent = `Завершено (${fmt(dur)} всего)`;
+        else stEl.textContent = `Идёт: прошло ${fmt(el)} из ${fmt(dur)}`;
+      });
+
+      nowEl.textContent = `Сейчас: ${new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}`;
+    }
+
+    // Редактор расписания — простое окно ввода
+    document.getElementById("edit").onclick = () => {
+      const current = SCHEDULE.map(s => `${s.title}|${s.start}-${s.end}`).join("\n");
+      const tpl = prompt(
+        "Отредактируй расписание (по строке на пару):\nФормат: Название|HH:MM-HH:MM",
+        current
+      );
+      if (!tpl) return;
+      const next = [];
+      for (const line of tpl.split("\n")) {
+        const t = line.trim(); if (!t) continue;
+        const [title, times] = t.split("|");
+        const [start, end] = (times || "").split("-").map(x => x?.trim());
+        if (!/^\d{2}:\d{2}$/.test(start||"") || !/^\d{2}:\d{2}$/.test(end||"")) {
+          alert("Проверь формат времени: HH:MM-HH:MM");
+          return;
+        }
+        next.push({ title: (title||"Пара"), start, end });
+      }
+      if (next.length) { SCHEDULE = next; saveSchedule(next); render(); }
+    };
+    document.getElementById("reset").onclick = () => { SCHEDULE = DEFAULT_SCHEDULE; saveSchedule(SCHEDULE); render(); };
+
+    // Тикер
+    setInterval(tick, 200);
+    render();
+
+    // PWA: регистрация Service Worker для оффлайна
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+    }
+  </script>
+</body>
+</html>
